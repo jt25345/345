@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4361ee">
+    <title>学习任务管理器</title>
+    
+    <!-- 核心CSS内联 -->
+    <style>
+        /* 重置和基础样式 */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Microsoft YaHei', sans-serif; }
+        body { background: linear-gradient(135deg, #667eea, #764ba2); height: 100vh; overflow: hidden; }
+        
+        /* 加载动画 */
+        #loadingScreen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #4361ee, #3a0ca3);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; z-index: 9999; transition: opacity 0.3s;
+        }
+        .loading-spinner {
+            width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%; border-top-color: white;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* 应用容器 */
+        .app-container { width: 100%; height: 100%; display: flex; flex-direction: column; }
+        
+        /* 头部 */
+        header { 
+            background: linear-gradient(135deg, #4361ee, #3a0ca3); 
+            color: white; padding: 12px 15px; flex-shrink: 0;
+        }
+        .header-top {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+        }
+        h1 { font-size: 18px; display: flex; align-items: center; gap: 6px; }
+        .header-actions { display: flex; gap: 5px; }
+        .header-btn {
+            background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white; padding: 5px 10px; border-radius: 6px; font-size: 11px;
+            cursor: pointer; display: flex; align-items: center; gap: 3px;
+        }
+        
+        /* 统计数据 */
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+        .stat-item { text-align: center; background: rgba(255,255,255,0.1); padding: 6px 3px; border-radius: 8px; }
+        .stat-number { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+        .stat-label { font-size: 9px; opacity: 0.9; }
+        
+        /* 任务区域 */
+        .task-section { flex: 1; padding: 12px 15px; overflow-y: auto; background: white; }
+        .task-list { display: flex; flex-direction: column; gap: 8px; }
+        
+        /* 筛选按钮 */
+        .filter-buttons { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 5px; }
+        .filter-btn { 
+            padding: 6px 12px; border: 2px solid #e2e8f0; background: white; 
+            border-radius: 16px; color: #64748b; font-size: 13px; white-space: nowrap; flex-shrink: 0;
+        }
+        .filter-btn.active { background: #4361ee; color: white; border-color: #4361ee; }
+        
+        /* 任务项 */
+        .task-item {
+            background: linear-gradient(135deg, #f8fafc, #f1f5f9); padding: 12px; border-radius: 10px;
+            display: flex; align-items: center; gap: 10px; cursor: pointer;
+            border-left: 4px solid #4361ee; transition: transform 0.2s;
+        }
+        .task-item:active { transform: scale(0.98); }
+        .task-item.completed {
+            background: linear-gradient(135deg, #f0fdf4, #dcfce7); border-left-color: #10b981;
+        }
+        
+        /* 复选框 */
+        .task-checkbox {
+            width: 18px; height: 18px; min-width: 18px; border: 2px solid #4361ee; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer;
+        }
+        .task-checkbox.checked { background: #10b981; border-color: #10b981; }
+        .task-checkbox.checked::after { content: "✓"; color: white; font-weight: bold; font-size: 11px; }
+        
+        /* 任务内容 */
+        .task-content { flex: 1; min-width: 0; overflow: hidden; }
+        .task-title { font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+        .task-meta { font-size: 11px; color: #64748b; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        
+        /* 徽章 */
+        .video-badge { background: #e0e7ff; color: #4f46e5; padding: 2px 6px; border-radius: 10px; font-size: 10px; }
+        .video-link-badge { background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 10px; font-size: 10px; }
+        .status-badge { padding: 2px 6px; border-radius: 10px; font-size: 10px; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-completed { background: #d1fae5; color: #065f46; }
+        
+        /* 删除按钮 */
+        .delete-btn {
+            padding: 5px 10px; background: #fee2e2; color: #dc2626; border: none;
+            border-radius: 6px; font-size: 11px; flex-shrink: 0; cursor: pointer;
+        }
+        
+        /* 空状态 */
+        .empty-state { text-align: center; padding: 40px 20px; color: #64748b; }
+        .empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
+        
+        /* 添加表单 */
+        .add-form {
+            padding: 12px 15px; background: #f9fafb; border-top: 1px solid #e5e7eb;
+            flex-shrink: 0; display: none;
+        }
+        .add-form.show { display: block; }
+        .form-row { display: flex; flex-direction: column; gap: 8px; }
+        .task-input {
+            width: 100%; padding: 10px 12px; border: 2px solid #4361ee; border-radius: 8px;
+            font-size: 14px; background: white;
+        }
+        .button-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        button {
+            padding: 10px 16px; background: #4361ee; color: white; border: none; border-radius: 8px;
+            font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 4px;
+        }
+        .upload-btn { background: #e0e7ff; color: #4f46e5; padding: 10px 12px; }
+        .link-btn { background: #dbeafe; color: #1d4ed8; padding: 10px 12px; }
+        .link-btn.active { background: #3b82f6; color: white; }
+        
+        /* 控制按钮 */
+        .control-buttons {
+            display: flex; padding: 12px 15px; background: #f9fafb;
+            border-top: 1px solid #e5e7eb; gap: 8px; flex-shrink: 0;
+        }
+        .control-btn {
+            flex: 1; padding: 12px; background: #4361ee; color: white; border: none;
+            border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        
+        /* 分享面板 */
+        .share-panel {
+            background: rgba(255, 255, 255, 0.95); border-radius: 8px; margin-top: 8px;
+            padding: 10px; display: none; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .share-panel.show { display: block; }
+        .share-title { text-align: center; margin-bottom: 8px; color: #4361ee; font-size: 13px; font-weight: 600; }
+        .share-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+        .share-btn {
+            padding: 6px 8px; border: none; border-radius: 6px; font-size: 10px; font-weight: 500;
+            cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
+            min-height: 45px; justify-content: center;
+        }
+        .share-icon { font-size: 14px; }
+        .share-label { font-size: 9px; }
+        .share-btn.export { background: #10b981; color: white; }
+        .share-btn.import { background: #3b82f6; color: white; }
+        .share-btn.share-link { background: #ec4899; color: white; }
+        .share-btn.text { background: #f59e0b; color: white; }
+        .share-btn.html { background: #8b5cf6; color: white; }
+        .share-btn.video-list { background: #06b6d4; color: white; }
+        
+        /* 模态框基础 */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal.show { display: flex; align-items: center; justify-content: center; }
+        .modal-content {
+            background: white; width: 90%; max-width: 400px; border-radius: 12px;
+            overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #4361ee, #3a0ca3); color: white;
+            padding: 15px; text-align: center; position: relative;
+        }
+        .modal-title { font-size: 16px; font-weight: 600; }
+        .modal-close {
+            position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2);
+            border: none; color: white; width: 30px; height: 30px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+        }
+        .modal-body { padding: 20px; }
+        
+        /* Toast */
+        .toast {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.8); color: white; padding: 10px 16px;
+            border-radius: 8px; z-index: 2000; opacity: 0; transition: opacity 0.3s;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <!-- 加载屏幕 -->
+    <div id="loadingScreen">
+        <div class="loading-spinner"></div>
+        <div>加载中...</div>
+    </div>
+    
+    <!-- 主应用 -->
+    <div class="app-container">
+        <header>
+            <div class="header-top">
+                <h1>📚 每日学习</h1>
+                <div class="header-actions">
+                    <button class="header-btn" onclick="toggleSharePanel()">
+                        <span>📤</span>
+                        <span>分享</span>
+                    </button>
+                    <button class="header-btn" onclick="showVideoList()">
+                        <span>🎬</span>
+                        <span>视频</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 分享面板 -->
+            <div class="share-panel" id="sharePanel">
+                <div class="share-title">📤 分享与导出</div>
+                <div class="share-grid">
+                    <button class="share-btn export" onclick="exportTasks()">
+                        <span class="share-icon">📥</span>
+                        <span class="share-label">导出数据</span>
+                    </button>
+                    <button class="share-btn import" onclick="document.getElementById('importFile').click()">
+                        <span class="share-icon">📤</span>
+                        <span class="share-label">导入数据</span>
+                    </button>
+                    <button class="share-btn share-link" onclick="generateShareableLink()">
+                        <span class="share-icon">🔗</span>
+                        <span class="share-label">分享链接</span>
+                    </button>
+                    <button class="share-btn text" onclick="shareAsText()">
+                        <span class="share-icon">📋</span>
+                        <span class="share-label">复制文本</span>
+                    </button>
+                    <button class="share-btn html" onclick="generateHTMLReport()">
+                        <span class="share-icon">📄</span>
+                        <span class="share-label">生成报告</span>
+                    </button>
+                    <button class="share-btn video-list" onclick="showVideoList()">
+                        <span class="share-icon">🎬</span>
+                        <span class="share-label">视频清单</span>
+                    </button>
+                </div>
+                <input type="file" id="importFile" accept=".json,.txt" style="display:none;" onchange="importTasks(event)">
+            </div>
+            
+            <!-- 统计数据 -->
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="totalTasks">0</div>
+                    <div class="stat-label">总任务</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="pendingTasks">0</div>
+                    <div class="stat-label">进行中</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="completedTasks">0</div>
+                    <div class="stat-label">已完成</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="points">0</div>
+                    <div class="stat-label">积分</div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- 任务区域 -->
+        <div class="task-section">
+            <div class="filter-buttons">
+                <button class="filter-btn active" onclick="filterTasks('all')">全部</button>
+                <button class="filter-btn" onclick="filterTasks('pending')">进行中</button>
+                <button class="filter-btn" onclick="filterTasks('completed')">已完成</button>
+            </div>
+            
+            <div class="task-list" id="taskList"></div>
+            
+            <div id="emptyState" class="empty-state" style="display:none;">
+                <div class="empty-icon">📝</div>
+                <h3>还没有学习任务</h3>
+                <p>点击下方"添加任务"按钮开始</p>
+            </div>
+        </div>
+        
+        <!-- 添加表单 -->
+        <div class="add-form" id="addForm">
+            <div class="form-row">
+                <input type="text" id="taskInput" class="task-input" placeholder="输入学习任务..." autocomplete="off">
+                <input type="url" id="videoUrlInput" class="video-url-input" placeholder="输入视频链接 (可选)" autocomplete="off" style="display:none;">
+                <div class="button-group">
+                    <button class="upload-btn" onclick="addVideoFile()">
+                        <span>📁</span>
+                        <span>添加视频</span>
+                    </button>
+                    <button class="link-btn" id="linkBtn" onclick="toggleVideoUrl()">
+                        <span>🔗</span>
+                        <span>视频链接</span>
+                    </button>
+                    <button id="addBtn">
+                        <span>+</span>
+                        <span>添加任务</span>
+                    </button>
+                </div>
+                <input type="file" id="videoUpload" accept="video/*" style="display:none;" onchange="handleVideoFile(event)">
+                <div id="fileInfo" class="file-info" style="display:none; margin-top:8px; padding:6px 10px; background:#f1f5f9; border-radius:6px; font-size:12px;"></div>
+                <div id="linkInfo" class="link-info" style="display:none; margin-top:8px; padding:6px 10px; background:#eff6ff; border-radius:6px; font-size:12px;"></div>
+            </div>
+        </div>
+        
+        <!-- 控制按钮 -->
+        <div class="control-buttons">
+            <button class="control-btn" onclick="toggleAddForm()">
+                <span>+</span>
+                <span>添加任务</span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- 模态框容器 -->
+    <div id="modalContainer"></div>
+    
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+    
+    <!-- 核心JS -->
+    <script>
+        // ==================== 极速初始化 ====================
+        let tasks = [];
+        let totalPoints = 0;
+        let currentFilter = 'all';
+        let isStudentMode = false;
+        let selectedVideoFile = null;
+        let selectedVideoUrl = null;
+        let useVideoUrl = false;
+        
+        // 平台配置（简版）
+        const platforms = {
+            bilibili: { name: '哔哩哔哩', icon: '📺', color: '#fb7299' },
+            douyin: { name: '抖音', icon: '🎵', color: '#000' },
+            tencent: { name: '腾讯视频', icon: '🎬', color: '#0052d9' },
+            youku: { name: '优酷', icon: '📹', color: '#ff6400' },
+            baidu: { name: '百度网盘', icon: '☁️', color: '#2932e1' },
+            generic: { name: '其他链接', icon: '🔗', color: '#64748b' }
+        };
+        
+        // 1. 快速初始化
+        function fastInit() {
+            console.time('初始化时间');
+            
+            // 立即隐藏加载屏幕
+            setTimeout(() => {
+                document.getElementById('loadingScreen').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('loadingScreen').style.display = 'none';
+                }, 300);
+            }, 300);
+            
+            // 快速加载本地数据
+            try {
+                const savedTasks = localStorage.getItem('studyTasks');
+                if (savedTasks) {
+                    tasks = JSON.parse(savedTasks);
+                }
+                
+                const savedPoints = localStorage.getItem('totalPoints');
+                if (savedPoints) {
+                    totalPoints = parseInt(savedPoints);
+                }
+            } catch (e) {
+                console.warn('加载本地数据失败:', e);
+            }
+            
+            // 检查URL参数（学生模式）
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('share') === 'true') {
+                const shareData = urlParams.get('data');
+                if (shareData) {
+                    try {
+                        const decodedData = decodeURIComponent(shareData);
+                        const data = JSON.parse(decodedData);
+                        if (data.tasks) {
+                            tasks = data.tasks;
+                            isStudentMode = true;
+                            // 学生模式：隐藏编辑功能
+                            document.querySelector('.control-buttons').style.display = 'none';
+                            document.querySelector('h1').innerHTML = '📚 学习任务打卡';
+                            document.querySelector('.header-actions').style.display = 'none';
+                        }
+                    } catch (e) {
+                        console.warn('加载分享数据失败:', e);
+                    }
+                }
+            }
+            
+            // 立即渲染界面
+            renderTasks();
+            setupEvents();
+            
+            console.timeEnd('初始化时间');
+        }
+        
+        // 2. 设置事件
+        function setupEvents() {
+            // 添加任务按钮
+            document.getElementById('addBtn').addEventListener('click', addTask);
+            
+            // 输入框回车
+            document.getElementById('taskInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') addTask();
+            });
+            
+            // 视频链接输入
+            document.getElementById('videoUrlInput').addEventListener('input', function() {
+                if (this.value.trim()) {
+                    selectedVideoUrl = this.value;
+                    selectedVideoFile = null;
+                    document.getElementById('fileInfo').style.display = 'none';
+                    document.getElementById('linkInfo').style.display = 'block';
+                    document.getElementById('linkInfo').textContent = '🔗 视频链接已设置';
+                } else {
+                    selectedVideoUrl = null;
+                    document.getElementById('linkInfo').style.display = 'none';
+                }
+            });
+        }
+        
+        // 3. 渲染任务列表
+        function renderTasks() {
+            const taskList = document.getElementById('taskList');
+            const emptyState = document.getElementById('emptyState');
+            
+            let filteredTasks = tasks;
+            if (currentFilter === 'pending') {
+                filteredTasks = tasks.filter(t => !t.completed);
+            } else if (currentFilter === 'completed') {
+                filteredTasks = tasks.filter(t => t.completed);
+            }
+            
+            if (filteredTasks.length === 0) {
+                taskList.innerHTML = '';
+                emptyState.style.display = 'block';
+            } else {
+                emptyState.style.display = 'none';
+                taskList.innerHTML = '';
+                
+                filteredTasks.forEach(task => {
+                    const div = document.createElement('div');
+                    div.className = `task-item ${task.completed ? 'completed' : ''}`;
+                    
+                    // 视频徽章
+                    let videoBadge = '';
+                    if (task.video) {
+                        if (task.videoType === 'url') {
+                            const platform = detectPlatform(task.videoUrl);
+                            if (platform && platforms[platform]) {
+                                videoBadge = `<span style="background:${platforms[platform].color}10;color:${platforms[platform].color};padding:2px 6px;border-radius:10px;font-size:10px;border:1px solid ${platforms[platform].color}30">${platforms[platform].icon} ${platforms[platform].name}</span>`;
+                            } else {
+                                videoBadge = '<span class="video-link-badge">🔗 在线视频</span>';
+                            }
+                        } else {
+                            videoBadge = '<span class="video-badge">🎬 本地视频</span>';
+                        }
+                    }
+                    
+                    // 删除按钮（非学生模式显示）
+                    let deleteButton = '';
+                    if (!isStudentMode) {
+                        deleteButton = `<button class="delete-btn" onclick="deleteTask(${task.id})">删除</button>`;
+                    }
+                    
+                    div.innerHTML = `
+                        <div class="task-checkbox ${task.completed ? 'checked' : ''}" onclick="toggleTask(${task.id})"></div>
+                        <div class="task-content" ${task.video ? `onclick="playVideo(${task.id})" style="cursor:pointer;"` : ''}>
+                            <div class="task-title">${task.title}</div>
+                            <div class="task-meta">
+                                ${videoBadge}
+                                <span class="status-badge ${task.completed ? 'status-completed' : 'status-pending'}">
+                                    ${task.completed ? '✅ 已完成' : '⏳ 进行中'}
+                                </span>
+                                <span>${formatDate(task.createdAt)}</span>
+                            </div>
+                        </div>
+                        ${deleteButton}
+                    `;
+                    taskList.appendChild(div);
+                });
+            }
+            
+            updateStats();
+        }
+        
+        // 4. 更新统计
+        function updateStats() {
+            const total = tasks.length;
+            const pending = tasks.filter(t => !t.completed).length;
+            const completed = tasks.filter(t => t.completed).length;
+            
+            document.getElementById('totalTasks').textContent = total;
+            document.getElementById('pendingTasks').textContent = pending;
+            document.getElementById('completedTasks').textContent = completed;
+            document.getElementById('points').textContent = totalPoints;
+        }
+        
+        // 5. 筛选任务
+        function filterTasks(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderTasks();
+        }
+        
+        // 6. 切换任务状态
+        function toggleTask(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+            
+            const wasCompleted = task.completed;
+            task.completed = !task.completed;
+            
+            // 保存数据
+            saveData();
+            
+            // 增加积分
+            if (!wasCompleted && task.completed) {
+                totalPoints += 1;
+                saveData();
+                showToast('任务完成！+1分');
+            }
+            
+            renderTasks();
+        }
+        
+        // 7. 删除任务
+        function deleteTask(taskId) {
+            if (!confirm('确定删除这个任务吗？\n\n注意：删除任务不会减少已获得的积分。')) return;
+            
+            tasks = tasks.filter(t => t.id !== taskId);
+            saveData();
+            renderTasks();
+            showToast('任务已删除');
+        }
+        
+        // 8. 添加任务
+        function addTask() {
+            const input = document.getElementById('taskInput');
+            const title = input.value.trim();
+            
+            if (!title) {
+                showToast('请输入任务标题');
+                return;
+            }
+            
+            const hasVideo = !!selectedVideoFile || !!selectedVideoUrl;
+            const videoType = selectedVideoFile ? 'local' : (selectedVideoUrl ? 'url' : null);
+            const videoUrl = selectedVideoUrl;
+            
+            // 检测平台
+            let platform = null;
+            if (videoUrl) {
+                platform = detectPlatform(videoUrl);
+            }
+            
+            const task = {
+                id: Date.now(),
+                title: title,
+                completed: false,
+                video: hasVideo,
+                videoType: videoType,
+                videoUrl: videoUrl,
+                platform: platform,
+                createdAt: new Date().toISOString(),
+                status: 'pending'
+            };
+            
+            tasks.push(task);
+            saveData();
+            
+            // 重置表单
+            input.value = '';
+            selectedVideoFile = null;
+            selectedVideoUrl = null;
+            useVideoUrl = false;
+            document.getElementById('videoUrlInput').style.display = 'none';
+            document.getElementById('videoUrlInput').value = '';
+            document.getElementById('fileInfo').style.display = 'none';
+            document.getElementById('linkInfo').style.display = 'none';
+            document.getElementById('linkBtn').classList.remove('active');
+            
+            renderTasks();
+            showToast('任务添加成功');
+            
+            // 收起表单
+            toggleAddForm();
+        }
+        
+        // 9. 保存数据
+        function saveData() {
+            try {
+                localStorage.setItem('studyTasks', JSON.stringify(tasks));
+                localStorage.setItem('totalPoints', totalPoints.toString());
+            } catch (e) {
+                console.warn('保存数据失败:', e);
+            }
+        }
+        
+        // 10. 添加视频文件
+        function addVideoFile() {
+            document.getElementById('videoUpload').click();
+        }
+        
+        function handleVideoFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            selectedVideoFile = file;
+            selectedVideoUrl = null;
+            useVideoUrl = false;
+            
+            document.getElementById('fileInfo').style.display = 'block';
+            document.getElementById('fileInfo').textContent = `📁 ${file.name} (${formatFileSize(file.size)})`;
+            document.getElementById('linkInfo').style.display = 'none';
+            document.getElementById('videoUrlInput').style.display = 'none';
+            document.getElementById('linkBtn').classList.remove('active');
+            
+            event.target.value = '';
+        }
+        
+        // 11. 切换视频链接输入
+        function toggleVideoUrl() {
+            useVideoUrl = !useVideoUrl;
+            if (useVideoUrl) {
+                document.getElementById('videoUrlInput').style.display = 'block';
+                document.getElementById('linkBtn').classList.add('active');
+                setTimeout(() => document.getElementById('videoUrlInput').focus(), 100);
+            } else {
+                document.getElementById('videoUrlInput').style.display = 'none';
+                document.getElementById('linkBtn').classList.remove('active');
+                selectedVideoUrl = null;
+                document.getElementById('linkInfo').style.display = 'none';
+            }
+        }
+        
+        // 12. 播放视频
+        function playVideo(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task || !task.video) return;
+            
+            if (task.videoType === 'url' && task.videoUrl) {
+                window.open(task.videoUrl, '_blank');
+            } else {
+                showToast('本地视频暂不支持在线播放');
+            }
+        }
+        
+        // 13. 显示/隐藏添加表单
+        function toggleAddForm() {
+            if (isStudentMode) return;
+            
+            const addForm = document.getElementById('addForm');
+            if (addForm.classList.contains('show')) {
+                addForm.classList.remove('show');
+            } else {
+                addForm.classList.add('show');
+                setTimeout(() => document.getElementById('taskInput').focus(), 100);
+            }
+        }
+        
+        // 14. 切换分享面板
+        function toggleSharePanel() {
+            const sharePanel = document.getElementById('sharePanel');
+            if (sharePanel.classList.contains('show')) {
+                sharePanel.classList.remove('show');
+            } else {
+                sharePanel.classList.add('show');
+            }
+        }
+        
+        // ==================== 分享功能 ====================
+        
+        // 15. 导出任务
+        function exportTasks() {
+            if (tasks.length === 0) {
+                showToast('没有任务可以导出');
+                return;
+            }
+            
+            const data = {
+                tasks: tasks,
+                exportInfo: {
+                    exportDate: new Date().toISOString(),
+                    totalTasks: tasks.length,
+                    completedTasks: tasks.filter(t => t.completed).length,
+                    totalPoints: totalPoints
+                }
+            };
+            
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `学习任务_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+            
+            showToast(`已导出 ${tasks.length} 个任务`);
+            toggleSharePanel();
+        }
+        
+        // 16. 导入任务
+        function importTasks(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (!data.tasks || !Array.isArray(data.tasks)) {
+                        throw new Error('文件格式不正确');
+                    }
+                    
+                    const taskCount = data.tasks.length;
+                    
+                    if (!confirm(`要导入 ${taskCount} 个任务吗？`)) {
+                        return;
+                    }
+                    
+                    // 合并任务
+                    tasks = [...tasks, ...data.tasks.map(task => ({
+                        ...task,
+                        id: task.id || Date.now() + Math.random()
+                    }))];
+                    
+                    saveData();
+                    renderTasks();
+                    showToast(`成功导入 ${taskCount} 个任务`);
+                    toggleSharePanel();
+                    
+                } catch (error) {
+                    console.error('导入失败:', error);
+                    showToast('导入失败：文件格式不正确');
+                }
+            };
+            reader.readAsText(file);
+            
+            event.target.value = '';
+        }
+        
+        // 17. 生成分享链接
+        function generateShareableLink() {
+            if (tasks.length === 0) {
+                showToast('没有任务可以分享');
+                return;
+            }
+            
+            // 创建可分享的任务数据（去除本地视频）
+            const shareableTasks = tasks.map(task => {
+                const shareableTask = {
+                    id: task.id,
+                    title: task.title,
+                    completed: false, // 分享时重置完成状态
+                    video: task.video,
+                    videoType: task.videoType,
+                    videoUrl: task.videoUrl,
+                    platform: task.platform,
+                    createdAt: task.createdAt,
+                    status: 'pending'
+                };
+                
+                // 如果是本地视频，标记为不支持在线播放
+                if (task.videoType === 'local') {
+                    shareableTask.video = false;
+                    shareableTask.note = '本地视频无法在线播放';
+                }
+                
+                return shareableTask;
+            });
+            
+            const shareData = {
+                tasks: shareableTasks,
+                shareInfo: {
+                    shareDate: new Date().toISOString(),
+                    totalTasks: tasks.length,
+                    message: '学生可以使用此链接查看任务'
+                }
+            };
+            
+            const encodedData = encodeURIComponent(JSON.stringify(shareData));
+            const currentUrl = window.location.origin + window.location.pathname;
+            const shareUrl = `${currentUrl}?share=true&data=${encodedData}`;
+            
+            // 显示分享链接模态框
+            showShareLinkModal(shareUrl);
+            toggleSharePanel();
+        }
+        
+        // 18. 显示分享链接模态框
+        function showShareLinkModal(shareUrl) {
+            const modal = document.createElement('div');
+            modal.className = 'modal show';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div class="modal-title">🔗 分享学习任务</div>
+                        <button class="modal-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <div style="margin-bottom:15px; color:#64748b; font-size:13px; text-align:center;">
+                            复制此链接分享给学生，学生可以直接观看视频并进行打卡
+                        </div>
+                        <div style="background:#f8fafc; padding:12px; border-radius:8px; margin-bottom:15px; border:1px solid #e2e8f0;">
+                            <div style="word-break:break-all; color:#1e293b; font-size:13px; margin-bottom:8px;">${shareUrl}</div>
+                            <div style="font-size:11px; color:#64748b;">
+                                学生打开此链接即可查看所有任务和视频
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button onclick="copyToClipboard('${shareUrl}'); this.parentElement.parentElement.remove()" style="flex:1; padding:10px; background:#3b82f6; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+                                📋 复制链接
+                            </button>
+                            <button onclick="window.open('${shareUrl}', '_blank'); this.parentElement.parentElement.remove()" style="flex:1; padding:10px; background:#10b981; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+                                🔗 打开预览
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('modalContainer').appendChild(modal);
+        }
+        
+        // 19. 复制为文本
+        function shareAsText() {
+            if (tasks.length === 0) {
+                showToast('没有任务可以分享');
+                return;
+            }
+            
+            let text = "📚 学习任务清单\n";
+            text += "=".repeat(30) + "\n";
+            text += "生成时间：" + new Date().toLocaleString() + "\n";
+            text += "总任务：" + tasks.length;
+            text += " | 进行中：" + tasks.filter(t => !t.completed).length;
+            text += " | 已完成：" + tasks.filter(t => t.completed).length;
+            text += " | 总积分：" + totalPoints;
+            text += "\n" + "=".repeat(30) + "\n\n";
+            
+            tasks.forEach((task, index) => {
+                text += `${index + 1}. ${task.title}\n`;
+                text += `   状态：${task.completed ? '✅ 已完成' : '⏳ 进行中'}\n`;
+                if (task.video) {
+                    if (task.videoType === 'url') {
+                        const platform = detectPlatform(task.videoUrl);
+                        text += `   视频：${platform ? platforms[platform].name : '在线视频'} (链接)\n`;
+                    } else {
+                        text += `   视频：本地视频\n`;
+                    }
+                }
+                text += "\n";
+            });
+            
+            copyToClipboard(text);
+            showToast('任务清单已复制到剪贴板');
+            toggleSharePanel();
+        }
+        
+        // 20. 生成HTML报告
+        function generateHTMLReport() {
+            if (tasks.length === 0) {
+                showToast('没有任务可以生成报告');
+                return;
+            }
+            
+            let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>学习任务报告</title><style>
+                body { font-family: 'Microsoft YaHei', sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; background: #f8fafc; }
+                .container { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+                .header { text-align: center; margin-bottom: 25px; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; }
+                .task-item { margin: 12px 0; padding: 12px; border-left: 4px solid #4361ee; background: #f8fafc; border-radius: 5px; }
+                .task-item.completed { border-color: #10b981; background: #f0fdf4; }
+                .task-title { font-weight: bold; font-size: 15px; margin-bottom: 5px; color: #1e293b; }
+                .task-meta { font-size: 12px; color: #64748b; display: flex; flex-wrap: wrap; gap: 8px; }
+                .stats { display: flex; justify-content: center; gap: 15px; margin: 15px 0; }
+            </style></head><body><div class="container"><div class="header">
+                <h1>📚 学习任务报告</h1>
+                <div class="stats">
+                    <div>总任务: ${tasks.length}</div>
+                    <div>进行中: ${tasks.filter(t => !t.completed).length}</div>
+                    <div>已完成: ${tasks.filter(t => t.completed).length}</div>
+                    <div>总积分: ${totalPoints}</div>
+                </div>
+                <p>生成时间: ${new Date().toLocaleString()}</p>
+            </div>`;
+            
+            tasks.forEach((task, index) => {
+                html += `<div class="task-item ${task.completed ? 'completed' : ''}">
+                    <div class="task-title">${index + 1}. ${task.title}</div>
+                    <div class="task-meta">
+                        <span style="padding:2px 6px;border-radius:10px;font-size:11px;background:${task.completed ? '#d1fae5' : '#fef3c7'};color:${task.completed ? '#065f46' : '#92400e'}">
+                            ${task.completed ? '✅ 已完成' : '⏳ 进行中'}
+                        </span>`;
+                
+                if (task.video) {
+                    if (task.videoType === 'url') {
+                        html += `<span style="background:#dbeafe;color:#1d4ed8;padding:2px 6px;border-radius:10px;font-size:11px;">🔗 在线视频</span>`;
+                    } else {
+                        html += `<span style="background:#e0e7ff;color:#4f46e5;padding:2px 6px;border-radius:10px;font-size:11px;">🎬 本地视频</span>`;
+                    }
+                }
+                
+                html += `<span>创建时间: ${formatDate(task.createdAt)}</span></div></div>`;
+            });
+            
+            html += `</div></body></html>`;
+            
+            const blob = new Blob([html], {type: 'text/html'});
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `学习任务报告_${new Date().toLocaleDateString().replace(/\//g, '-')}.html`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+            
+            showToast('HTML报告已生成并下载');
+            toggleSharePanel();
+        }
+        
+        // 21. 显示视频清单
+        function showVideoList() {
+            const videoTasks = tasks.filter(task => task.video);
+            
+            if (videoTasks.length === 0) {
+                showToast('没有视频任务');
+                return;
+            }
+            
+            const modal = document.createElement('div');
+            modal.className = 'modal show';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div class="modal-title">🎬 视频清单 (${videoTasks.length})</div>
+                        <button class="modal-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                    </div>
+                    <div class="modal-body" style="max-height: 400px; overflow-y: auto;">
+                        ${videoTasks.map(task => `
+                            <div style="display:flex; align-items:center; padding:10px; border-bottom:1px solid #e5e7eb; cursor:pointer;" onclick="playVideo(${task.id}); this.parentElement.parentElement.parentElement.remove()">
+                                <div style="font-size:18px; margin-right:10px; color:#06b6d4;">${task.videoType === 'url' ? '🔗' : '🎬'}</div>
+                                <div style="flex:1; min-width:0;">
+                                    <div style="font-size:14px; color:#1e293b; margin-bottom:3px; font-weight:500;">${task.title}</div>
+                                    <div style="font-size:11px; color:#64748b; display:flex; gap:8px; align-items:center;">
+                                        <span style="padding:2px 6px; border-radius:10px; font-size:10px; background:${task.videoType === 'url' ? '#dbeafe' : '#e0e7ff'};color:${task.videoType === 'url' ? '#1d4ed8' : '#4f46e5'}">
+                                            ${task.videoType === 'url' ? '在线视频' : '本地视频'}
+                                        </span>
+                                        <span>${formatDate(task.createdAt)}</span>
+                                    </div>
+                                </div>
+                                <button style="padding:6px 12px; background:#06b6d4; color:white; border:none; border-radius:6px; font-size:12px; cursor:pointer;">播放</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('modalContainer').appendChild(modal);
+            toggleSharePanel();
+        }
+        
+        // ==================== 工具函数 ====================
+        
+        // 检测平台
+        function detectPlatform(url) {
+            if (!url) return null;
+            if (url.includes('bilibili.com')) return 'bilibili';
+            if (url.includes('douyin.com')) return 'douyin';
+            if (url.includes('v.qq.com')) return 'tencent';
+            if (url.includes('youku.com')) return 'youku';
+            if (url.includes('pan.baidu.com')) return 'baidu';
+            return 'generic';
+        }
+        
+        // 格式化日期
+        function formatDate(dateString) {
+            try {
+                const date = new Date(dateString);
+                const now = new Date();
+                const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
+                
+                if (diffHours < 24) {
+                    return `${diffHours}小时前`;
+                } else if (diffHours < 24 * 7) {
+                    return `${Math.floor(diffHours / 24)}天前`;
+                } else {
+                    return date.toLocaleDateString();
+                }
+            } catch (e) {
+                return '刚刚';
+            }
+        }
+        
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        // 复制到剪贴板
+        function copyToClipboard(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast('已复制到剪贴板');
+                }).catch(() => {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+        
+        function fallbackCopy(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-999999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            
+            try {
+                document.execCommand('copy');
+                showToast('已复制到剪贴板');
+            } catch (err) {
+                console.error('复制失败:', err);
+                showToast('复制失败，请手动复制');
+            }
+            
+            document.body.removeChild(textarea);
+        }
+        
+        // 显示Toast
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+        
+        // 启动应用
+        document.addEventListener('DOMContentLoaded', fastInit);
+        
+        // 页面关闭前保存数据
+        window.addEventListener('beforeunload', () => {
+            saveData();
+        });
+    </script>
+</body>
+</html>
